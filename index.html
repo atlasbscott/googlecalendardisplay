@@ -1,0 +1,688 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Focus</title>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg:       #080a0d;
+  --surface:  #0d1117;
+  --line:     rgba(255,255,255,0.05);
+  --text:     #e8edf3;
+  --muted:    #3d4a5c;
+  --dim:      #1e2530;
+  --accent:   #e8c547;
+  --red:      #ff4f4f;
+  --urgent:   #ff6b35;
+
+  --e0: #e8c547; --e0g: rgba(232,197,71,0.07);
+  --e1: #47c5e8; --e1g: rgba(71,197,232,0.07);
+  --e2: #7de87a; --e2g: rgba(125,232,122,0.07);
+  --e3: #e8478c; --e3g: rgba(232,71,140,0.07);
+  --e4: #b47ae8; --e4g: rgba(180,122,232,0.07);
+}
+
+html, body {
+  width: 100%; height: 100%;
+  overflow: hidden;
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Inter', sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ── AUTH ── */
+#auth {
+  position: fixed; inset: 0; z-index: 500;
+  background: var(--bg);
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 32px;
+}
+.auth-logo {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 52px; letter-spacing: 6px; color: var(--text); line-height: 1;
+}
+.auth-logo em { color: var(--accent); font-style: normal; }
+.auth-sub { font-size: 11px; color: var(--muted); letter-spacing: 3px; text-transform: uppercase; }
+.auth-btn {
+  display: flex; align-items: center; gap: 12px;
+  background: #fff; color: #111; border: none;
+  padding: 14px 32px; border-radius: 6px;
+  font-size: 14px; font-weight: 600; font-family: 'Inter', sans-serif;
+  cursor: pointer; transition: opacity 0.15s;
+}
+.auth-btn:hover { opacity: 0.88; }
+.auth-btn svg { width: 18px; height: 18px; flex-shrink: 0; }
+
+/* ── APP SHELL ── */
+#app {
+  width: 100vw; height: 100vh;
+  display: flex; flex-direction: column;
+}
+
+/* ── TOP BAR ── */
+#topbar {
+  flex-shrink: 0;
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 16px 24px 14px;
+  border-bottom: 1px solid var(--line);
+  min-height: 70px;
+}
+#tb-clock {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 28px; letter-spacing: 2px; color: var(--text);
+  display: flex; align-items: baseline; gap: 3px;
+}
+.tb-colon { color: var(--accent); animation: blink 1s step-end infinite; }
+@keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.1} }
+#tb-ampm { font-family: 'Inter', sans-serif; font-size: 11px; font-weight: 500; color: var(--muted); letter-spacing: 2px; margin-left: 4px; align-self: center; }
+#tb-event-name {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 32px; letter-spacing: 1.5px;
+  color: var(--text);
+  text-align: right; max-width: 60%;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  line-height: 1;
+}
+
+/* ── MAIN AREA ── */
+#main {
+  flex: 1; display: flex; flex-direction: column;
+  overflow: hidden; min-height: 0;
+  position: relative;
+}
+
+/* ── DRAIN BAR — full-width progress bar along the very top of main ── */
+#drain-bar-track {
+  position: absolute; top: 0; left: 0; right: 0;
+  height: 2px; background: var(--line); z-index: 10; flex-shrink: 0;
+}
+#drain-bar-fill {
+  height: 100%; width: 0%;
+  transition: width 1s linear;
+  /* color set by JS */
+}
+
+/* ── NOW SECTION ── */
+#now-section {
+  flex: 1; display: flex; flex-direction: column;
+  justify-content: center;
+  padding: 28px 28px 20px;
+  position: relative; overflow: hidden;
+  min-height: 0;
+  border-bottom: 1px solid var(--line);
+}
+
+/* Ambient glow behind the countdown */
+#now-glow {
+  position: absolute; inset: 0; pointer-events: none; z-index: 0;
+  opacity: 0; transition: opacity 1s;
+  background: radial-gradient(ellipse 80% 60% at 50% 100%, var(--glow-color, transparent), transparent);
+}
+
+#now-inner {
+  position: relative; z-index: 1;
+  display: flex; flex-direction: column;
+}
+
+/* The event name — small, restrained */
+#now-label {
+  font-size: 10px; font-weight: 600; letter-spacing: 3px;
+  text-transform: uppercase; color: var(--muted);
+  margin-bottom: 6px;
+}
+#now-name {
+  font-size: 15px; font-weight: 500; color: var(--text);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  margin-bottom: 20px; opacity: 0.85;
+}
+#now-name.empty { color: var(--muted); font-weight: 300; font-style: italic; font-size: 14px; }
+
+/* THE BIG COUNTDOWN — this is the hero */
+#countdown-wrap {
+  display: flex; align-items: baseline; gap: 0;
+  line-height: 1;
+  margin-bottom: 18px;
+}
+#countdown-mins {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: clamp(80px, 14vw, 140px);
+  letter-spacing: -2px;
+  color: var(--text);
+  transition: color 0.5s;
+  line-height: 0.9;
+}
+#countdown-unit {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: clamp(28px, 4vw, 44px);
+  color: var(--muted);
+  letter-spacing: 2px;
+  align-self: flex-end;
+  margin-bottom: 8px;
+  margin-left: 8px;
+}
+#countdown-secs {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: clamp(28px, 4vw, 44px);
+  color: var(--muted);
+  letter-spacing: 1px;
+  align-self: flex-end;
+  margin-bottom: 8px;
+  margin-left: 12px;
+  min-width: 2ch;
+}
+
+/* Progress track — thin, understated */
+.track-row {
+  display: flex; align-items: center; gap: 10px;
+}
+.track-label { font-size: 11px; color: var(--muted); flex-shrink: 0; }
+.track {
+  flex: 1; height: 2px;
+  background: var(--line);
+  border-radius: 99px; position: relative; overflow: visible;
+  min-width: 0;
+}
+#track-elapsed {
+  position: absolute; left: 0; top: 0; height: 100%;
+  border-radius: 99px;
+  transition: width 1s linear;
+}
+#track-dot {
+  position: absolute; top: 50%; transform: translate(-50%, -50%);
+  width: 8px; height: 8px; border-radius: 50%;
+  background: var(--red); flex-shrink: 0;
+  transition: left 1s linear;
+}
+
+/* urgency states — countdown color shifts as time runs out */
+#countdown-mins.urgent   { color: var(--urgent); }
+#countdown-mins.critical { color: var(--red); }
+
+/* ── UPCOMING SECTION ── */
+#up-section {
+  flex-shrink: 0;
+  padding: 16px 28px 20px;
+  display: flex; flex-direction: column; gap: 4px;
+}
+
+#up-label {
+  font-size: 10px; font-weight: 600; letter-spacing: 3px;
+  text-transform: uppercase; color: var(--muted);
+  margin-bottom: 6px;
+}
+#up-when {
+  font-size: 10px; font-weight: 600; letter-spacing: 2px;
+  text-transform: uppercase;
+  /* color set by JS */
+}
+#up-name {
+  font-size: 18px; font-weight: 500; color: var(--text);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  line-height: 1.2; margin-bottom: 3px;
+}
+#up-meta {
+  font-size: 11px; color: var(--muted);
+}
+#up-empty { font-size: 13px; color: var(--muted); font-style: italic; font-weight: 300; }
+
+/* ── SIGN OUT ── */
+#signout-btn {
+  position: fixed; bottom: 12px; right: 12px; z-index: 50;
+  background: transparent; border: 1px solid var(--dim);
+  color: var(--muted); padding: 4px 10px; border-radius: 4px;
+  font-size: 9px; letter-spacing: 1px; text-transform: uppercase;
+  cursor: pointer; font-family: 'Inter', sans-serif;
+  transition: all 0.15s; opacity: 0.4;
+}
+#signout-btn:hover { opacity: 1; border-color: var(--muted); }
+
+/* token warning */
+#token-warning {
+  display: none; position: fixed;
+  top: 60px; left: 50%; transform: translateX(-50%);
+  background: #3a0a0a; border: 1px solid var(--red); color: #ffaaaa;
+  padding: 8px 20px; border-radius: 6px; font-size: 11px;
+  z-index: 100; cursor: pointer; white-space: nowrap;
+}
+
+/* ── MOBILE ── */
+@media (max-width: 768px) {
+  #app { height: 100dvh; }
+
+  #topbar { padding: 12px 18px 10px; }
+  #tb-clock { font-size: 24px; }
+
+  #now-section { padding: 20px 20px 16px; }
+  #now-name { margin-bottom: 14px; font-size: 14px; }
+  #countdown-mins { font-size: clamp(72px, 20vw, 110px); }
+  #countdown-unit { font-size: clamp(24px, 6vw, 36px); }
+  #countdown-secs { font-size: clamp(24px, 6vw, 36px); }
+
+  #up-section { padding: 14px 20px 16px; }
+  #up-name { font-size: 16px; }
+
+  #signout-btn {
+    bottom: 10px; left: 50%; right: auto; transform: translateX(-50%);
+    border-radius: 99px; padding: 7px 18px;
+  }
+}
+</style>
+</head>
+<body>
+
+<!-- AUTH -->
+<div id="auth">
+  <div class="auth-logo">FO<em>·</em>CUS</div>
+  <div class="auth-sub">Calendar · Time Awareness</div>
+  <button class="auth-btn" onclick="signIn()">
+    <svg viewBox="0 0 24 24"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/></svg>
+    Connect Google Calendar
+  </button>
+</div>
+
+<!-- APP -->
+<div id="app" style="display:none">
+
+  <!-- TOP BAR -->
+  <div id="topbar">
+    <div>
+      <div id="tb-clock">
+        <span id="h">12</span><span class="tb-colon">:</span><span id="mi">00</span>
+        <span id="tb-ampm">AM</span>
+      </div>
+      <div id="tb-date">Monday, Jan 1</div>
+    </div>
+    <div id="tb-event-name"></div>
+  </div>
+
+  <!-- MAIN -->
+  <div id="main">
+    <div id="drain-bar-track"><div id="drain-bar-fill"></div></div>
+
+    <!-- NOW -->
+    <div id="now-section">
+      <div id="now-glow"></div>
+      <div id="now-inner">
+        <div id="now-label">Now</div>
+        <div id="now-name" class="empty">Nothing scheduled</div>
+
+        <div id="countdown-wrap">
+          <div id="countdown-mins">—</div>
+          <div id="countdown-unit">MIN</div>
+          <div id="countdown-secs">00</div>
+        </div>
+
+        <div class="track-row">
+          <span class="track-label" id="track-start"></span>
+          <div class="track">
+            <div id="track-elapsed"></div>
+            <div id="track-dot" style="left:0%"></div>
+          </div>
+          <span class="track-label" id="track-end"></span>
+        </div>
+      </div>
+    </div>
+
+    <!-- UPCOMING -->
+    <div id="up-section">
+      <div id="up-label">Up Next</div>
+      <div id="up-empty">You're free</div>
+      <div id="up-content" style="display:none">
+        <div id="up-when">—</div>
+        <div id="up-name">—</div>
+        <div id="up-meta">—</div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<button id="signout-btn" onclick="signOut()" style="display:none">Sign out</button>
+<div id="token-warning"></div>
+
+<script src="https://accounts.google.com/gsi/client" async></script>
+<script>
+const CLIENT_ID = '117777776990-suvese3ot2ia22flmi5p1qsb72u347e0.apps.googleusercontent.com';
+const SCOPES    = 'https://www.googleapis.com/auth/calendar.readonly';
+
+const PALETTE = [
+  { color: '#e8c547', glow: 'rgba(232,197,71,0.12)'  },
+  { color: '#47c5e8', glow: 'rgba(71,197,232,0.12)'  },
+  { color: '#7de87a', glow: 'rgba(125,232,122,0.12)' },
+  { color: '#e8478c', glow: 'rgba(232,71,140,0.12)'  },
+  { color: '#b47ae8', glow: 'rgba(180,122,232,0.12)' },
+];
+
+let accessToken    = null;
+let tokenExpiresAt = 0;
+let events         = [];
+let calColorMap    = {};
+let _lastFetchFail = 0;
+let _lastEventId   = null;
+
+// ── AUTH ──
+function signIn() {
+  google.accounts.oauth2.initTokenClient({
+    client_id: CLIENT_ID, scope: SCOPES,
+    callback(r) {
+      if (r.error) { alert('Auth error: ' + r.error); return; }
+      accessToken    = r.access_token;
+      tokenExpiresAt = Date.now() + (r.expires_in - 60) * 1000;
+      // Save to sessionStorage so refresh doesn't sign you out
+      sessionStorage.setItem('cal_token', accessToken);
+      sessionStorage.setItem('cal_expires', tokenExpiresAt);
+      document.getElementById('auth').style.display        = 'none';
+      document.getElementById('app').style.display         = 'flex';
+      document.getElementById('signout-btn').style.display = 'block';
+      document.getElementById('token-warning').style.display = 'none';
+      init();
+    }
+  }).requestAccessToken();
+}
+function signOut() {
+  accessToken = null; events = [];
+  sessionStorage.removeItem('cal_token');
+  sessionStorage.removeItem('cal_expires');
+  document.getElementById('auth').style.display        = 'flex';
+  document.getElementById('app').style.display         = 'none';
+  document.getElementById('signout-btn').style.display = 'none';
+}
+
+// ── RESTORE SESSION ON PAGE LOAD ──
+(function restoreSession() {
+  const token   = sessionStorage.getItem('cal_token');
+  const expires = parseInt(sessionStorage.getItem('cal_expires') || '0', 10);
+  if (token && Date.now() < expires) {
+    accessToken    = token;
+    tokenExpiresAt = expires;
+    document.getElementById('auth').style.display        = 'none';
+    document.getElementById('app').style.display         = 'flex';
+    document.getElementById('signout-btn').style.display = 'block';
+    // Wait for GSI script to load, then init
+    window.addEventListener('load', init);
+  }
+})();
+
+// ── INIT ──
+function init() {
+  tick();
+  setInterval(tick, 1000);
+  setInterval(render, 30000);
+  fetchCalendars().then(() => fetchEvents().then(render));
+  setInterval(() => fetchEvents().then(render), 5 * 60 * 1000);
+  setInterval(checkToken, 60 * 1000);
+}
+
+function checkToken() {
+  if (accessToken && Date.now() > tokenExpiresAt) {
+    const w = document.getElementById('token-warning');
+    w.textContent = 'Session expired — click to reconnect';
+    w.style.display = 'block';
+    w.onclick = signIn;
+    accessToken = null;
+    sessionStorage.removeItem('cal_token');
+    sessionStorage.removeItem('cal_expires');
+  }
+}
+
+// ── CLOCK TICK (every second) ──
+function tick() {
+  const now = new Date();
+  let h = now.getHours(), m = now.getMinutes();
+  const ap = h >= 12 ? 'PM' : 'AM';
+  h = h % 12 || 12;
+  document.getElementById('h').textContent  = String(h);
+  document.getElementById('mi').textContent = String(m).padStart(2, '0');
+  document.getElementById('tb-ampm').textContent = ap;
+  document.getElementById('tb-date').textContent =
+    now.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
+
+  // Re-render when event boundary crosses
+  const cur   = currentEvent(now);
+  const curId = cur ? cur.id : 'none';
+  if (curId !== _lastEventId) { _lastEventId = curId; render(); }
+
+  updateLive(now);
+}
+
+// ── LIVE UPDATE (per second, no full re-render) ──
+function updateLive(now) {
+  const cur = currentEvent(now);
+  if (!cur) return;
+
+  const s   = new Date(cur.start.dateTime);
+  const e   = new Date(cur.end.dateTime);
+  const remMs  = Math.max(0, e - now);
+  const remMin = Math.floor(remMs / 60000);
+  const remSec = Math.floor((remMs % 60000) / 1000);
+  const pct    = Math.min(100, Math.max(0, ((now - s) / (e - s)) * 100));
+
+  // Countdown number
+  const cd = document.getElementById('countdown-mins');
+  cd.textContent = remMin;
+
+  // Urgency color shifts
+  cd.classList.remove('urgent', 'critical');
+  if (remMin <= 5)       cd.classList.add('critical');
+  else if (remMin <= 15) cd.classList.add('urgent');
+
+  // Seconds
+  document.getElementById('countdown-secs').textContent = String(remSec).padStart(2, '0');
+
+  // Drain bar (elapsed)
+  document.getElementById('drain-bar-fill').style.width = pct.toFixed(2) + '%';
+  document.getElementById('track-elapsed').style.width  = pct.toFixed(2) + '%';
+  document.getElementById('track-dot').style.left       = pct.toFixed(2) + '%';
+}
+
+// ── FETCH ──
+async function fetchCalendars() {
+  if (!accessToken) return;
+  try {
+    const r = await fetch('https://www.googleapis.com/calendar/v3/users/me/calendarList',
+      { headers: { Authorization: 'Bearer ' + accessToken } });
+    const d = await r.json();
+    (d.items || []).forEach((c, i) => { calColorMap[c.id] = i % 5; });
+  } catch(e) { console.error(e); }
+}
+
+async function fetchEvents() {
+  if (!accessToken) return;
+  const now  = new Date();
+  const tMin = new Date(now.getTime() - 12 * 60 * 60 * 1000).toISOString();
+  const tMax = new Date(now.getFullYear(), now.getMonth() + 2, 0).toISOString();
+  try {
+    const r = await fetch(
+      `https://www.googleapis.com/calendar/v3/calendars/primary/events?` +
+      `timeMin=${encodeURIComponent(tMin)}&timeMax=${encodeURIComponent(tMax)}` +
+      `&singleEvents=true&orderBy=startTime&maxResults=200`,
+      { headers: { Authorization: 'Bearer ' + accessToken } }
+    );
+    if (r.status === 401) { checkToken(); return; }
+    const d = await r.json();
+    events = d.items || [];
+    _lastFetchFail = 0;
+  } catch(e) { console.error(e); _lastFetchFail = Date.now(); }
+}
+
+// ── HELPERS ──
+function currentEvent(now) {
+  return events.find(ev => {
+    if (!ev.start.dateTime) return false;
+    return new Date(ev.start.dateTime) <= now && new Date(ev.end.dateTime) > now;
+  }) || null;
+}
+function nextEvent(now) {
+  return events
+    .filter(ev => ev.start.dateTime && new Date(ev.start.dateTime) > now)
+    .sort((a, b) => new Date(a.start.dateTime) - new Date(b.start.dateTime))[0] || null;
+}
+function getCI(ev) {
+  const id = ev.id || ev.summary || '';
+  let hash = 0;
+  for (let i = 0; i < id.length; i++) hash = (hash * 31 + id.charCodeAt(i)) & 0xffff;
+  return hash % 5;
+}
+function fmt12(d) {
+  let h = d.getHours(), m = d.getMinutes();
+  const ap = h >= 12 ? 'pm' : 'am';
+  h = h % 12 || 12;
+  return `${h}:${String(m).padStart(2, '0')}${ap}`;
+}
+function relativeWhen(now, s) {
+  const diffMin = Math.round((s - now) / 60000);
+  if (diffMin < 60) return `In ${diffMin}m`;
+  const h = Math.floor(diffMin / 60), m = diffMin % 60;
+  if (diffMin < 1440) return m > 0 ? `In ${h}h ${m}m` : `In ${h}h`;
+  const diffD = Math.floor(diffMin / 1440);
+  if (diffD === 1) return 'Tomorrow';
+  return s.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
+}
+
+// ── RENDER ──
+function render() {
+  const now = new Date();
+  renderNow(now);
+  renderUpcoming(now);
+}
+
+function renderNow(now) {
+  const cur = currentEvent(now);
+
+  const nameEl = document.getElementById('now-name');
+  const cdEl   = document.getElementById('countdown-mins');
+  const unitEl = document.getElementById('countdown-unit');
+  const secEl  = document.getElementById('countdown-secs');
+  const glow   = document.getElementById('now-glow');
+  const fill   = document.getElementById('drain-bar-fill');
+  const track  = document.getElementById('track-elapsed');
+
+  if (!cur) {
+    nameEl.textContent = 'Nothing scheduled';
+    nameEl.className   = 'empty';
+    cdEl.textContent   = '—';
+    cdEl.className     = '';
+    unitEl.style.opacity = '0';
+    secEl.style.opacity  = '0';
+    glow.style.opacity   = '0';
+    fill.style.width     = '0%';
+    track.style.width    = '0%';
+    document.getElementById('track-dot').style.left = '0%';
+    document.getElementById('track-start').textContent = '';
+    document.getElementById('track-end').textContent   = '';
+    document.getElementById('drain-bar-fill').style.background = 'var(--accent)';
+    document.getElementById('tb-event-name').textContent = '';
+    return;
+  }
+
+  const ci  = getCI(cur);
+  const C   = PALETTE[ci];
+  const s   = new Date(cur.start.dateTime);
+  const e   = new Date(cur.end.dateTime);
+  const remMs  = Math.max(0, e - now);
+  const remMin = Math.floor(remMs / 60000);
+  const remSec = Math.floor((remMs % 60000) / 1000);
+  const pct    = Math.min(100, Math.max(0, ((now - s) / (e - s)) * 100));
+
+  nameEl.textContent = cur.summary || '(No title)';
+  nameEl.className   = '';
+  document.getElementById('tb-event-name').textContent = cur.summary || '(No title)';
+
+  cdEl.textContent = remMin;
+  cdEl.className   = '';
+  if (remMin <= 5)       cdEl.classList.add('critical');
+  else if (remMin <= 15) cdEl.classList.add('urgent');
+
+  unitEl.style.opacity = '1';
+  secEl.style.opacity  = '1';
+  secEl.textContent    = String(remSec).padStart(2, '0');
+
+  // Glow — intensifies as time runs out
+  const glowOpacity = 0.4 + (pct / 100) * 0.6;
+  glow.style.setProperty('--glow-color', C.glow);
+  glow.style.background = `radial-gradient(ellipse 90% 70% at 50% 110%, ${C.glow}, transparent)`;
+  glow.style.opacity    = String(glowOpacity);
+
+  // Drain bar color
+  fill.style.background  = C.color;
+  track.style.background = C.color;
+
+  document.getElementById('track-start').textContent = fmt12(s);
+  document.getElementById('track-end').textContent   = fmt12(e);
+  document.getElementById('drain-bar-fill').style.width = pct.toFixed(2) + '%';
+  document.getElementById('track-elapsed').style.width  = pct.toFixed(2) + '%';
+  document.getElementById('track-dot').style.left       = pct.toFixed(2) + '%';
+}
+
+function renderUpcoming(now) {
+  const nxt     = nextEvent(now);
+  const emptyEl = document.getElementById('up-empty');
+  const contEl  = document.getElementById('up-content');
+
+  if (!nxt) {
+    // Emergency re-fetch guard
+    if (accessToken && Date.now() - _lastFetchFail > 120000) {
+      fetchEvents().then(() => render());
+    }
+    emptyEl.style.display = 'block';
+    contEl.style.display  = 'none';
+    return;
+  }
+
+  const ci = getCI(nxt);
+  const C  = PALETTE[ci];
+  const s  = new Date(nxt.start.dateTime);
+  const e  = new Date(nxt.end.dateTime);
+
+  emptyEl.style.display = 'none';
+  contEl.style.display  = 'block';
+
+  const whenEl = document.getElementById('up-when');
+  whenEl.textContent  = relativeWhen(now, s);
+  whenEl.style.color  = C.color;
+  document.getElementById('up-name').textContent = nxt.summary || '(No title)';
+
+  let meta = fmt12(s) + ' – ' + fmt12(e);
+  if (nxt.location) meta += '  ·  ' + nxt.location;
+  document.getElementById('up-meta').textContent = meta;
+}
+
+// ── DEMO ──
+(function demo() {
+  if (new URLSearchParams(location.search).get('demo') !== '1') return;
+  document.getElementById('auth').style.display        = 'none';
+  document.getElementById('app').style.display         = 'flex';
+  document.getElementById('signout-btn').style.display = 'block';
+
+  const now = new Date();
+  function ev(title, dOff, sh, sm, eh, em, cal, loc) {
+    const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() + dOff);
+    return {
+      id: title + dOff,
+      summary: title, location: loc || '',
+      start: { dateTime: new Date(d.getFullYear(), d.getMonth(), d.getDate(), sh, sm).toISOString() },
+      end:   { dateTime: new Date(d.getFullYear(), d.getMonth(), d.getDate(), eh, em).toISOString() },
+      organizer: { email: cal }
+    };
+  }
+  const H = now.getHours(), M = now.getMinutes();
+  events = [
+    ev('Deep Work Block',      0, H,   M-5,  H,   M+55, 'a'),
+    ev('Design Review',        0, H+1, 10,   H+2, 10,   'b', 'Room 4B'),
+    ev('Lunch',                0, H+2, 30,   H+3, 30,   'c', 'Café Versailles'),
+    ev('Sprint Planning',      0, H+4, 0,    H+6, 0,    'a'),
+    ev('Doctor Appointment',   1, 14,  0,    15,  0,    'd', '123 Main St'),
+  ];
+  calColorMap = { a: 0, b: 1, c: 2, d: 3 };
+  render(); tick();
+  setInterval(tick, 1000);
+  setInterval(render, 30000);
+})();
+</script>
+</body>
+</html>
