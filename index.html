@@ -1,0 +1,869 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Calendar</title>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Epilogue:ital,wght@0,300;0,400;0,500;0,700;1,300;1,400&display=swap" rel="stylesheet">
+<style>
+/* ── RESET & BASE ─────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg:        #0a0e14;
+  --panel:     #0f1520;
+  --panel2:    #141c28;
+  --line:      rgba(255,255,255,0.06);
+  --line2:     rgba(255,255,255,0.03);
+  --text:      #dde4ed;
+  --muted:     #4a5568;
+  --dim:       #232d3d;
+  --accent:    #e8c547;   /* warm gold */
+  --accent-r:  232;
+  --accent-g:  197;
+  --accent-b:  71;
+  --now-line:  #ff4f4f;
+
+  /* event palette */
+  --e0: #e8c547; --e0d: rgba(232,197,71,0.12);
+  --e1: #47c5e8; --e1d: rgba(71,197,232,0.12);
+  --e2: #7de87a; --e2d: rgba(125,232,122,0.12);
+  --e3: #e8478c; --e3d: rgba(232,71,140,0.12);
+  --e4: #b47ae8; --e4d: rgba(180,122,232,0.12);
+
+  --header-h: 72px;
+  --timeline-w: 52px;
+  --row-h: 64px;  /* px per hour in timeline */
+}
+
+html, body { width: 100%; height: 100%; overflow: hidden; background: var(--bg); color: var(--text); font-family: 'Epilogue', sans-serif; -webkit-font-smoothing: antialiased; }
+
+/* subtle vignette */
+body::after {
+  content: ''; position: fixed; inset: 0; pointer-events: none; z-index: 0;
+  background: radial-gradient(ellipse 120% 80% at 50% 0%, rgba(232,197,71,0.03) 0%, transparent 60%);
+}
+
+/* ── AUTH ─────────────────────────────────────────── */
+#auth {
+  position: fixed; inset: 0; z-index: 500;
+  background: var(--bg);
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 28px;
+}
+.auth-logo {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 56px; letter-spacing: 4px; color: var(--text);
+  line-height: 1;
+}
+.auth-logo em { color: var(--accent); font-style: normal; }
+.auth-tagline { font-size: 13px; color: var(--muted); letter-spacing: 1px; text-transform: uppercase; }
+.auth-google {
+  display: flex; align-items: center; gap: 12px;
+  background: #fff; color: #1a1a1a; border: none;
+  padding: 13px 28px; border-radius: 8px;
+  font-size: 14px; font-weight: 700; font-family: 'Epilogue', sans-serif;
+  cursor: pointer; letter-spacing: 0.3px;
+  transition: transform 0.1s, box-shadow 0.2s;
+  box-shadow: 0 0 0 1px rgba(255,255,255,0.1);
+}
+.auth-google:hover { transform: translateY(-2px); box-shadow: 0 10px 40px rgba(0,0,0,0.6); }
+.auth-google svg { width: 18px; height: 18px; }
+.auth-note {
+  max-width: 380px; text-align: center;
+  font-size: 11px; color: var(--dim); line-height: 1.8;
+  background: var(--panel); border: 1px solid var(--line);
+  border-radius: 8px; padding: 14px 18px;
+}
+.auth-note code { color: var(--e1); background: rgba(71,197,232,0.1); padding: 1px 5px; border-radius: 3px; }
+
+/* ── APP SHELL ────────────────────────────────────── */
+#app {
+  position: relative; z-index: 1;
+  width: 100vw; height: 100vh;
+  display: grid;
+  grid-template-rows: var(--header-h) 1fr;
+  grid-template-columns: 1fr;
+}
+
+/* ── HEADER ───────────────────────────────────────── */
+#header {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  align-items: center;
+  padding: 0 24px;
+  border-bottom: 1px solid var(--line);
+  flex-shrink: 0;
+  background: rgba(10,14,20,0.9);
+  backdrop-filter: blur(8px);
+  position: relative; z-index: 10;
+}
+
+/* Clock – top left */
+#clock {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 44px; letter-spacing: 2px;
+  color: var(--text); line-height: 1;
+  display: flex; align-items: baseline; gap: 6px;
+}
+.clock-colon { animation: blink 1s step-end infinite; color: var(--accent); }
+@keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.15} }
+#clock-ampm { font-size: 14px; color: var(--muted); letter-spacing: 2px; font-family: 'Epilogue', sans-serif; font-weight: 500; align-self: center; }
+#clock-date { font-size: 11px; color: var(--muted); margin-top: 1px; letter-spacing: 0.5px; font-weight: 400; }
+
+/* Current event name – top center */
+#header-center { text-align: center; }
+#header-event-label {
+  font-size: 9px; font-weight: 500; letter-spacing: 2.5px;
+  text-transform: uppercase; color: var(--muted); margin-bottom: 4px;
+}
+#header-event-name {
+  font-family: 'Epilogue', sans-serif;
+  font-size: 17px; font-weight: 700;
+  color: var(--text); line-height: 1.2;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  max-width: 280px; margin: 0 auto;
+}
+#header-event-name.none { color: var(--muted); font-weight: 300; font-style: italic; }
+
+/* Time remaining – top right */
+#header-right { text-align: right; }
+#time-remaining-label {
+  font-size: 9px; letter-spacing: 2.5px; text-transform: uppercase;
+  color: var(--muted); margin-bottom: 3px; font-weight: 500;
+}
+#time-remaining {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 38px; letter-spacing: 1px; line-height: 1;
+  color: var(--accent);
+}
+#time-remaining.none { color: var(--dim); font-size: 16px; font-family: 'Epilogue', sans-serif; font-weight: 300; letter-spacing: 0; margin-top: 6px; }
+
+/* ── BODY: timeline + main ────────────────────────── */
+#body {
+  display: grid;
+  grid-template-columns: var(--timeline-w) 1fr;
+  overflow: hidden;
+  min-height: 0;
+  height: 100%;
+}
+
+/* ── TIMELINE STRIP ───────────────────────────────── */
+#timeline {
+  border-right: 1px solid var(--line);
+  overflow: hidden;
+  position: relative;
+  background: var(--panel);
+  display: flex;
+  flex-direction: column;
+}
+
+/* The fixed top portion matching current-panel height */
+#tl-current-spacer {
+  flex-shrink: 0;
+  border-bottom: 1px solid var(--line);
+  background: var(--panel);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 9px; letter-spacing: 1.5px; text-transform: uppercase;
+  color: var(--dim); writing-mode: vertical-rl;
+}
+
+/* The scrolling part of timeline — mirrors #upcoming scroll */
+#timeline-scroll {
+  flex: 1; overflow: hidden;
+  position: relative;
+}
+#timeline-inner {
+  position: relative;
+  /* height set by JS to match upcoming-list */
+}
+.t-hour {
+  height: var(--row-h);
+  display: flex; align-items: flex-start; justify-content: center;
+  padding-top: 6px;
+  position: relative;
+  font-size: 10px; font-weight: 500; letter-spacing: 0.5px;
+  color: var(--muted);
+}
+.t-hour::after {
+  content: ''; position: absolute;
+  right: 0; top: 0;
+  width: 8px; height: 1px; background: var(--line);
+}
+.t-hour.is-now { color: var(--now-line); }
+
+/* Now indicator on timeline */
+#tl-now-line {
+  position: absolute; left: 0; right: 0; height: 1px;
+  background: var(--now-line); z-index: 5; pointer-events: none;
+}
+#tl-now-dot {
+  position: absolute; right: -4px; top: -4px;
+  width: 8px; height: 8px; border-radius: 50%;
+  background: var(--now-line);
+}
+
+/* ── MAIN SCROLL AREA ─────────────────────────────── */
+#main {
+  display: flex; flex-direction: column;
+  overflow: hidden; min-height: 0;
+  height: 100%;
+}
+
+/* Current event panel – auto height */
+#current-panel {
+  flex-shrink: 0;
+  border-bottom: 1px solid var(--line);
+  padding: 14px 22px 12px;
+  position: relative; overflow: hidden;
+  background: var(--panel);
+  transition: background 0.5s;
+}
+/* colored glow behind current event */
+#current-panel::before {
+  content: ''; position: absolute; inset: 0; pointer-events: none;
+  background: var(--cur-glow, transparent);
+  transition: background 0.5s;
+}
+
+/* Horizontal progress bar across bottom of current panel */
+#cur-progress-bar {
+  position: absolute; bottom: 0; left: 0;
+  height: 2px;
+  background: var(--cur-color, var(--accent));
+  transition: width 30s linear, background 0.5s;
+  z-index: 2;
+}
+
+#cur-empty {
+  font-size: 15px; color: var(--muted);
+  font-style: italic; font-weight: 300;
+  padding: 4px 0;
+}
+#cur-content { position: relative; z-index: 1; }
+.cur-top {
+  display: flex; align-items: flex-start; justify-content: space-between; gap: 16px;
+  margin-bottom: 10px;
+}
+#cur-title {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 32px; letter-spacing: 1px; line-height: 1;
+  color: var(--text); flex: 1;
+}
+.cur-tag {
+  font-size: 9px; font-weight: 700; letter-spacing: 2px; text-transform: uppercase;
+  padding: 4px 10px; border-radius: 3px;
+  background: var(--cur-color, var(--accent));
+  color: #0a0e14; flex-shrink: 0; margin-top: 4px;
+}
+.cur-meta {
+  display: flex; flex-wrap: wrap; gap: 14px;
+}
+.cur-chip { font-size: 12px; color: var(--muted); display: flex; align-items: center; gap: 5px; }
+.cur-chip .ic { opacity: 0.5; font-size: 11px; }
+.cur-time-row {
+  display: flex; align-items: center; gap: 10px; margin-top: 10px;
+}
+#cur-time-start { font-size: 12px; color: var(--muted); }
+#cur-time-end   { font-size: 12px; color: var(--muted); }
+.cur-time-track {
+  flex: 1; height: 2px; background: var(--line);
+  border-radius: 99px; overflow: hidden; position: relative;
+}
+#cur-time-fill {
+  position: absolute; left: 0; top: 0; height: 100%;
+  background: var(--cur-color, var(--accent));
+  border-radius: 99px; transition: width 30s linear;
+}
+/* now dot on track */
+#cur-now-dot {
+  position: absolute; top: -3px;
+  width: 8px; height: 8px; border-radius: 50%;
+  background: var(--now-line);
+  transform: translateX(-50%);
+  transition: left 30s linear;
+}
+
+/* ── UPCOMING SCROLL ──────────────────────────────── */
+#upcoming {
+  flex: 1; overflow-y: auto; overflow-x: hidden;
+  scrollbar-width: thin; scrollbar-color: var(--line) transparent;
+  padding: 0;
+  min-height: 0;
+  /* fill every remaining pixel */
+  height: 0;
+}
+#upcoming::-webkit-scrollbar { width: 3px; }
+#upcoming::-webkit-scrollbar-thumb { background: var(--line); border-radius: 3px; }
+
+/* Day group */
+.day-group { }
+.day-header {
+  display: flex; align-items: center; gap: 12px;
+  padding: 12px 22px 8px;
+  position: sticky; top: 0; z-index: 5;
+  background: var(--bg);
+  border-bottom: 1px solid var(--line2);
+}
+.day-num {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 28px; color: var(--muted); line-height: 1; min-width: 28px;
+}
+.day-group.today .day-num { color: var(--accent); }
+.day-info { display: flex; flex-direction: column; }
+.day-name {
+  font-size: 11px; font-weight: 600; letter-spacing: 1.5px;
+  text-transform: uppercase; color: var(--dim);
+}
+.day-group.today .day-name { color: var(--accent); }
+.day-full { font-size: 10px; color: var(--dim); margin-top: 1px; }
+.day-sep { flex: 1; height: 1px; background: var(--line2); }
+
+/* Event row */
+.ev-row {
+  display: flex; align-items: stretch;
+  padding: 10px 22px;
+  gap: 14px;
+  border-bottom: 1px solid var(--line2);
+  transition: background 0.12s;
+  cursor: default;
+  position: relative;
+}
+.ev-row:hover { background: var(--panel2); }
+.ev-row.is-current { background: var(--panel); }
+.ev-row.is-next { border-left: 2px solid var(--muted); }
+.ev-row.is-past { opacity: 0.28; }
+
+.ev-bar { width: 3px; border-radius: 3px; flex-shrink: 0; align-self: stretch; }
+.ev-body { flex: 1; min-width: 0; }
+.ev-name {
+  font-size: 15px; font-weight: 500; color: var(--text);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  margin-bottom: 3px;
+}
+.ev-time { font-size: 11px; }
+.ev-loc  { font-size: 10px; color: var(--dim); margin-top: 2px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+
+/* NEXT pill */
+.ev-next-pill {
+  position: absolute; right: 22px; top: 50%; transform: translateY(-50%);
+  font-size: 8px; font-weight: 700; letter-spacing: 2px; text-transform: uppercase;
+  padding: 3px 8px; border-radius: 3px;
+  background: var(--panel2); color: var(--muted); border: 1px solid var(--line);
+}
+
+.no-events-msg {
+  font-size: 12px; color: var(--dim); font-style: italic;
+  padding: 8px 22px 12px; text-align: left;
+}
+.no-more { text-align: center; padding: 24px; font-size: 12px; color: var(--dim); font-style: italic; }
+
+/* sign-out btn */
+#signout-btn {
+  position: fixed; bottom: 14px; right: 14px; z-index: 50;
+  background: transparent; border: 1px solid var(--dim);
+  color: var(--dim); padding: 5px 12px; border-radius: 5px;
+  font-size: 10px; letter-spacing: 1px; text-transform: uppercase;
+  cursor: pointer; font-family: 'Epilogue', sans-serif;
+  transition: all 0.15s;
+}
+#signout-btn:hover { border-color: var(--muted); color: var(--muted); }
+
+/* ── ANIMATIONS ───────────────────────────────────── */
+@keyframes fadeUp { from { opacity:0; transform:translateY(10px); } to { opacity:1; transform:translateY(0); } }
+.fade-in { animation: fadeUp 0.35s both; }
+</style>
+</head>
+<body>
+
+<!-- ── AUTH ── -->
+<div id="auth">
+  <div class="auth-logo">CAL<em>·</em>VIEW</div>
+  <div class="auth-tagline">Google Calendar · Full Screen Display</div>
+  <button class="auth-google" onclick="signIn()">
+    <svg viewBox="0 0 24 24"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/></svg>
+    Connect Google Calendar
+  </button>
+  <div class="auth-note">
+    <strong style="color:var(--text)">Self-contained — no server needed.</strong><br>
+    Replace <code>YOUR_CLIENT_ID</code> in this file with your Google OAuth Client ID.<br>
+    Enable the <code>Google Calendar API</code> and add this page's URL as an authorized origin at <code>console.cloud.google.com</code>.
+  </div>
+</div>
+
+<!-- ── APP ── -->
+<div id="app" style="display:none">
+
+  <!-- HEADER -->
+  <div id="header">
+    <!-- TL: Clock -->
+    <div>
+      <div id="clock">
+        <span id="h">12</span><span class="clock-colon">:</span><span id="mi">00</span>
+        <span id="clock-ampm">AM</span>
+      </div>
+      <div id="clock-date">Monday, Jan 1</div>
+    </div>
+
+    <!-- TC: Current event name -->
+    <div id="header-center">
+      <div id="header-event-label">Now Playing</div>
+      <div id="header-event-name" class="none">Nothing scheduled</div>
+    </div>
+
+    <!-- TR: Time remaining -->
+    <div id="header-right">
+      <div id="time-remaining-label">Time Left</div>
+      <div id="time-remaining" class="none">—</div>
+    </div>
+  </div>
+
+  <!-- BODY -->
+  <div id="body">
+
+    <!-- Timeline strip -->
+    <div id="timeline">
+      <div id="tl-current-spacer">Now</div>
+      <div id="timeline-scroll">
+        <div id="timeline-inner">
+          <!-- hours injected by JS -->
+        </div>
+      </div>
+    </div>
+
+    <!-- Main panel -->
+    <div id="main">
+
+      <!-- Current event -->
+      <div id="current-panel">
+        <div id="cur-progress-bar" style="width:0%"></div>
+        <div id="cur-empty">Nothing happening right now</div>
+        <div id="cur-content">
+          <div class="cur-top">
+            <div id="cur-title">—</div>
+            <div class="cur-tag" id="cur-tag">NOW</div>
+          </div>
+          <div class="cur-meta" id="cur-meta"></div>
+          <div class="cur-time-row">
+            <span id="cur-time-start"></span>
+            <div class="cur-time-track">
+              <div id="cur-time-fill" style="width:0%"></div>
+              <div id="cur-now-dot" style="left:0%"></div>
+            </div>
+            <span id="cur-time-end"></span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Upcoming scroll -->
+      <div id="upcoming">
+        <div id="upcoming-list"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<button id="signout-btn" onclick="signOut()" style="display:none">Sign out</button>
+
+<script src="https://accounts.google.com/gsi/client" async></script>
+<script>
+// ═══════════════════════════════════════════════
+//  CONFIG — replace with your Google OAuth Client ID
+// ═══════════════════════════════════════════════
+const CLIENT_ID = '117777776990-suvese3ot2ia22flmi5p1qsb72u347e0.apps.googleusercontent.com';
+const SCOPES    = 'https://www.googleapis.com/auth/calendar.readonly';
+
+const PALETTE = [
+  { color: 'var(--e0)', dim: 'var(--e0d)', glow: 'rgba(232,197,71,0.06)'  },
+  { color: 'var(--e1)', dim: 'var(--e1d)', glow: 'rgba(71,197,232,0.06)'  },
+  { color: 'var(--e2)', dim: 'var(--e2d)', glow: 'rgba(125,232,122,0.06)' },
+  { color: 'var(--e3)', dim: 'var(--e3d)', glow: 'rgba(232,71,140,0.06)'  },
+  { color: 'var(--e4)', dim: 'var(--e4d)', glow: 'rgba(180,122,232,0.06)' },
+];
+
+let accessToken  = null;
+let events       = [];
+let calColorMap  = {};
+
+// ── AUTH ─────────────────────────────────────────
+function signIn() {
+  google.accounts.oauth2.initTokenClient({
+    client_id: CLIENT_ID, scope: SCOPES,
+    callback(r) {
+      if (r.error) { alert('Auth error: ' + r.error); return; }
+      accessToken = r.access_token;
+      document.getElementById('auth').style.display       = 'none';
+      document.getElementById('app').style.display        = 'grid';
+      document.getElementById('signout-btn').style.display = 'block';
+      init();
+    }
+  }).requestAccessToken();
+}
+function signOut() {
+  accessToken = null; events = [];
+  document.getElementById('auth').style.display        = 'flex';
+  document.getElementById('app').style.display         = 'none';
+  document.getElementById('signout-btn').style.display = 'none';
+}
+
+// ── INIT ──────────────────────────────────────────
+function init() {
+  buildTimeline();
+  tick();
+  setInterval(tick, 1000);
+  setInterval(refreshRender, 30000);
+  fetchCalendars().then(() => fetchEvents().then(refreshRender));
+  setInterval(() => fetchEvents().then(refreshRender), 5 * 60 * 1000);
+}
+
+// ── CLOCK & HEADER ────────────────────────────────
+function tick() {
+  const now = new Date();
+  let h = now.getHours(), m = now.getMinutes();
+  const ap = h >= 12 ? 'PM' : 'AM';
+  h = h % 12 || 12;
+  document.getElementById('h').textContent  = String(h);
+  document.getElementById('mi').textContent = String(m).padStart(2,'0');
+  document.getElementById('clock-ampm').textContent = ap;
+  document.getElementById('clock-date').textContent =
+    now.toLocaleDateString('en-US', { weekday:'long', month:'short', day:'numeric' });
+
+  updateCurrentEventUI(now);
+  updateTimelineNow(now);
+}
+
+// ── TIMELINE ──────────────────────────────────────
+function buildTimeline() {
+  const inner = document.getElementById('timeline-inner');
+  let html = '';
+  for (let h = 0; h < 24; h++) {
+    const label = h === 0 ? '12am' : h < 12 ? `${h}am` : h === 12 ? '12pm' : `${h-12}pm`;
+    html += `<div class="t-hour" data-h="${h}">${label}</div>`;
+  }
+  inner.innerHTML = html;
+
+  // now line
+  const nowLine = document.createElement('div');
+  nowLine.id = 'tl-now-line';
+  nowLine.innerHTML = '<div id="tl-now-dot"></div>';
+  inner.appendChild(nowLine);
+
+  // Sync timeline scroll with upcoming scroll
+  const upcoming = document.getElementById('upcoming');
+  const tlScroll  = document.getElementById('timeline-scroll');
+  upcoming.addEventListener('scroll', () => {
+    tlScroll.scrollTop = upcoming.scrollTop;
+  });
+}
+
+function updateTimelineNow(now) {
+  const ROW_H = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--row-h'));
+  const mins  = now.getHours() * 60 + now.getMinutes();
+  const top   = (mins / 60) * ROW_H;
+
+  const line = document.getElementById('tl-now-line');
+  if (line) line.style.top = top + 'px';
+
+  // highlight current hour label
+  document.querySelectorAll('.t-hour').forEach(el => {
+    el.classList.toggle('is-now', parseInt(el.dataset.h) === now.getHours());
+  });
+
+  // Keep timeline inner tall enough (24 hours)
+  const inner = document.getElementById('timeline-inner');
+  if (inner) inner.style.minHeight = (24 * ROW_H) + 'px';
+}
+
+// ── FETCH ─────────────────────────────────────────
+async function fetchCalendars() {
+  try {
+    const r = await fetch(
+      'https://www.googleapis.com/calendar/v3/users/me/calendarList',
+      { headers: { Authorization: 'Bearer ' + accessToken } }
+    );
+    const d = await r.json();
+    (d.items || []).forEach((c, i) => { calColorMap[c.id] = i % 5; });
+  } catch(e) { console.error(e); }
+}
+
+async function fetchEvents() {
+  const now  = new Date();
+  const tMin = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
+  const tMax = new Date(now.getFullYear(), now.getMonth() + 2, 0).toISOString();
+  try {
+    const r = await fetch(
+      `https://www.googleapis.com/calendar/v3/calendars/primary/events?` +
+      `timeMin=${encodeURIComponent(tMin)}&timeMax=${encodeURIComponent(tMax)}` +
+      `&singleEvents=true&orderBy=startTime&maxResults=250`,
+      { headers: { Authorization: 'Bearer ' + accessToken } }
+    );
+    const d = await r.json();
+    events = d.items || [];
+  } catch(e) { console.error(e); }
+}
+
+// ── RENDER ────────────────────────────────────────
+function refreshRender() {
+  const now = new Date();
+  renderCurrentPanel(now);
+  renderUpcoming(now);
+}
+
+function getCI(ev) {
+  return (calColorMap[ev.organizer?.email] ?? events.indexOf(ev)) % 5;
+}
+
+// current event panel + header
+function renderCurrentPanel(now) {
+  const cur = events.find(ev => {
+    if (!ev.start.dateTime) return false;
+    return new Date(ev.start.dateTime) <= now && new Date(ev.end.dateTime) > now;
+  });
+
+  const panel   = document.getElementById('current-panel');
+  const empty   = document.getElementById('cur-empty');
+  const content = document.getElementById('cur-content');
+  const hName   = document.getElementById('header-event-name');
+  const hRemain = document.getElementById('time-remaining');
+  const hLabel  = document.getElementById('time-remaining-label');
+
+  if (!cur) {
+    panel.style.setProperty('--cur-color', 'var(--accent)');
+    panel.style.setProperty('--cur-glow', 'transparent');
+    empty.style.display   = '';
+    content.style.display = 'none';
+    document.getElementById('cur-progress-bar').style.width = '0%';
+
+    const next = events.find(ev => ev.start.dateTime && new Date(ev.start.dateTime) > now);
+    if (next) {
+      const diff = Math.round((new Date(next.start.dateTime) - now) / 60000);
+      empty.textContent = diff < 60
+        ? `Next event in ${diff} min`
+        : `Next event in ${Math.floor(diff/60)}h ${diff%60}m`;
+    } else {
+      empty.textContent = 'Nothing scheduled right now';
+    }
+    hName.textContent = 'Nothing scheduled';
+    hName.className   = 'none';
+    hRemain.textContent = '—';
+    hRemain.className   = 'none';
+    hLabel.textContent  = 'Up Next In';
+  } else {
+    const ci = getCI(cur);
+    const C  = PALETTE[ci];
+    const s  = new Date(cur.start.dateTime);
+    const e  = new Date(cur.end.dateTime);
+    const pct    = Math.min(100, Math.max(0, ((now - s) / (e - s)) * 100));
+    const remMin = Math.max(0, Math.round((e - now) / 60000));
+
+    panel.style.setProperty('--cur-color', C.color);
+    panel.style.setProperty('--cur-glow',  C.glow);
+    empty.style.display   = 'none';
+    content.style.display = '';
+
+    document.getElementById('cur-title').textContent = cur.summary || '(No title)';
+    document.getElementById('cur-tag').style.background = C.color;
+
+    let meta = `<div class="cur-chip"><span class="ic">🕐</span>${fmt12(s)} – ${fmt12(e)}</div>`;
+    if (cur.location) meta += `<div class="cur-chip"><span class="ic">📍</span>${cur.location}</div>`;
+    document.getElementById('cur-meta').innerHTML = meta;
+
+    document.getElementById('cur-time-start').textContent = fmt12(s);
+    document.getElementById('cur-time-end').textContent   = fmt12(e);
+    const fill = document.getElementById('cur-time-fill');
+    fill.style.width      = pct.toFixed(1) + '%';
+    fill.style.background = C.color;
+    const dot = document.getElementById('cur-now-dot');
+    dot.style.left = pct.toFixed(1) + '%';
+
+    document.getElementById('cur-progress-bar').style.cssText =
+      `width:${pct.toFixed(1)}%;background:${C.color}`;
+
+    hName.textContent = cur.summary || '(No title)';
+    hName.className   = '';
+    hRemain.textContent = remMin >= 60
+      ? `${Math.floor(remMin/60)}H ${String(remMin%60).padStart(2,'0')}M`
+      : `${remMin}M`;
+    hRemain.className   = '';
+    hRemain.style.color = C.color;
+    hLabel.textContent  = 'Time Left';
+  }
+
+  // Sync timeline spacer height to panel height
+  requestAnimationFrame(() => {
+    const spacer = document.getElementById('tl-current-spacer');
+    if (spacer) spacer.style.height = panel.offsetHeight + 'px';
+  });
+}
+
+function updateCurrentEventUI(now) {
+  // called every second for smooth bar updates
+  const cur = events.find(ev => {
+    if (!ev.start.dateTime) return false;
+    return new Date(ev.start.dateTime) <= now && new Date(ev.end.dateTime) > now;
+  });
+  if (!cur) return;
+  const s = new Date(cur.start.dateTime), e = new Date(cur.end.dateTime);
+  const pct = Math.min(100, Math.max(0, ((now - s) / (e - s)) * 100));
+  const remMin = Math.max(0, Math.round((e - now) / 60000));
+
+  document.getElementById('cur-time-fill').style.width = pct.toFixed(2) + '%';
+  document.getElementById('cur-now-dot').style.left    = pct.toFixed(2) + '%';
+  document.getElementById('cur-progress-bar').style.width = pct.toFixed(2) + '%';
+
+  const hRemain = document.getElementById('time-remaining');
+  if (!hRemain.classList.contains('none')) {
+    hRemain.textContent = remMin >= 60
+      ? `${Math.floor(remMin/60)}H ${String(remMin%60).padStart(2,'0')}M`
+      : `${remMin}M`;
+  }
+}
+
+// upcoming list
+function renderUpcoming(now) {
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+  const filtered = events
+    .filter(ev => {
+      const e = new Date(ev.end?.dateTime || ev.end?.date || ev.start.dateTime || ev.start.date);
+      if (ev.start.dateTime) return e > now;
+      return new Date(ev.start.date) >= today;
+    })
+    .sort((a,b) => new Date(a.start.dateTime||a.start.date) - new Date(b.start.dateTime||b.start.date));
+
+  // group by day
+  const dayMap = new Map();
+  filtered.forEach(ev => {
+    const dk = fmtDate(new Date(ev.start.dateTime || ev.start.date));
+    if (!dayMap.has(dk)) dayMap.set(dk, []);
+    dayMap.get(dk).push(ev);
+  });
+
+  const todayStr = fmtDate(today);
+  let firstNext = true;
+  let html = '';
+
+  dayMap.forEach((dayEvs, dk) => {
+    const d = new Date(dk + 'T12:00:00');
+    const isToday = dk === todayStr;
+
+    html += `<div class="day-group${isToday ? ' today' : ''}">
+      <div class="day-header">
+        <div class="day-num">${d.getDate()}</div>
+        <div class="day-info">
+          <div class="day-name">${d.toLocaleDateString('en-US',{weekday:'long'})}</div>
+          <div class="day-full">${d.toLocaleDateString('en-US',{month:'long',year:'numeric'})}</div>
+        </div>
+        <div class="day-sep"></div>
+      </div>`;
+
+    if (!dayEvs.length) {
+      html += '<div class="no-events-msg">No events</div>';
+    } else {
+      dayEvs.forEach(ev => {
+        const ci  = getCI(ev);
+        const C   = PALETTE[ci];
+        const isAllDay  = !ev.start.dateTime;
+        const s   = new Date(ev.start.dateTime || ev.start.date);
+        const e   = new Date(ev.end?.dateTime || ev.end?.date || s);
+        const isPast    = !isAllDay && e < now;
+        const isCurrent = !isAllDay && s <= now && e > now;
+        const isNext    = !isAllDay && !isCurrent && !isPast && firstNext && s > now;
+        if (isNext) firstNext = false;
+
+        const timeStr = isAllDay ? 'All day' : `${fmt12(s)} – ${fmt12(e)}`;
+        const loc     = ev.location ? `<div class="ev-loc">📍 ${ev.location}</div>` : '';
+        const nextPill = isNext ? '<div class="ev-next-pill">Next</div>' : '';
+
+        html += `<div class="ev-row${isPast?' is-past':''}${isCurrent?' is-current':''}${isNext?' is-next':''}">
+          <div class="ev-bar" style="background:${C.color}"></div>
+          <div class="ev-body">
+            <div class="ev-name">${ev.summary||'(No title)'}</div>
+            <div class="ev-time" style="color:${C.color}">${timeStr}</div>
+            ${loc}
+          </div>
+          ${nextPill}
+        </div>`;
+      });
+    }
+    html += '</div>';
+  });
+
+  if (!html) html = '<div class="no-more">You\'re all caught up ✦</div>';
+
+  const list = document.getElementById('upcoming-list');
+  list.innerHTML = html;
+
+  // Scroll so the current time aligns with the timeline's now-line
+  // Each day-group header is ~52px, each ev-row is ~56px — but we use the
+  // is-next element as the scroll anchor so upcoming starts at "now"
+  requestAnimationFrame(() => {
+    const up = document.getElementById('upcoming');
+    const nextEl = list.querySelector('.ev-row.is-next');
+    const curEl  = list.querySelector('.ev-row.is-current');
+    const anchor = curEl || nextEl;
+    if (anchor) {
+      up.scrollTo({ top: Math.max(0, anchor.offsetTop - 16), behavior: 'smooth' });
+    }
+    // Also sync timeline scroll immediately
+    document.getElementById('timeline-scroll').scrollTop = up.scrollTop;
+  });
+}
+
+// ── UTILS ─────────────────────────────────────────
+function fmtDate(d) {
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+function fmt12(d) {
+  let h = d.getHours(), m = d.getMinutes();
+  const ap = h >= 12 ? 'pm' : 'am';
+  h = h % 12 || 12;
+  return `${h}:${String(m).padStart(2,'0')}${ap}`;
+}
+
+// ═══════════════════════════════════════════════
+//  DEMO MODE  —  open URL with ?demo=1
+// ═══════════════════════════════════════════════
+(function demo() {
+  if (new URLSearchParams(location.search).get('demo') !== '1') return;
+
+  document.getElementById('auth').style.display        = 'none';
+  document.getElementById('app').style.display         = 'grid';
+  document.getElementById('signout-btn').style.display = 'block';
+
+  const now = new Date();
+  function ev(title, dOff, sh, sm, eh, em, cal, loc) {
+    const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() + dOff);
+    return {
+      id: Math.random().toString(36).slice(2),
+      summary: title, location: loc||'', description: '',
+      start: { dateTime: new Date(d.getFullYear(), d.getMonth(), d.getDate(), sh, sm).toISOString() },
+      end:   { dateTime: new Date(d.getFullYear(), d.getMonth(), d.getDate(), eh, em).toISOString() },
+      organizer: { email: cal }
+    };
+  }
+  const H = now.getHours(), M = now.getMinutes();
+  events = [
+    ev('Morning standup',     0, H,   M-8,  H,   M+22, 'a', 'Zoom'),
+    ev('Design review',       0, H+1, 0,    H+2, 0,    'b', 'Room 4B'),
+    ev('Lunch with Alex',     0, H+2, 30,   H+3, 30,   'c', 'Café Versailles'),
+    ev('Sprint planning',     0, H+4, 0,    H+6, 0,    'a'),
+    ev('Doctor appointment',  1, 14,  0,    15,  0,    'd', '123 Main St'),
+    ev('Team dinner',         1, 18,  30,   21,  0,    'e', 'The Grill'),
+    ev('Weekly 1:1',          2, 9,   0,    10,  0,    'b'),
+    ev('Product demo',        3, 15,  0,    16,  0,    'a', 'Conf. room B'),
+    ev('Gym session',         4, 7,   0,    8,   30,   'c'),
+    ev('Code review',         4, 14,  0,    15,  30,   'b'),
+    ev('Retrospective',       5, 11,  0,    12,  0,    'a'),
+    ev('Coffee w/ Sarah',     6, 10,  0,    11,  0,    'd', 'Blue Bottle Coffee'),
+  ];
+  calColorMap = { a:0, b:1, c:2, d:3, e:4 };
+
+  buildTimeline();
+  refreshRender();
+  tick();
+  setInterval(tick, 1000);
+  setInterval(refreshRender, 30000);
+})();
+</script>
+</body>
+</html>
